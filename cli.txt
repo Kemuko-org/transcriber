@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+import argparse
+import sys
+import os
+import tempfile
+import validators
+import whisper
+import yt_dlp
+from typing import Dict, Any
+
+def validate_url(url: str) -> bool:
+    return validators.url(url)
+
+def download_media(url: str) -> str:
+    with tempfile.NamedTemporaryFile(suffix=".%(ext)s", delete=False) as tmp_file:
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': tmp_file.name.replace('.%(ext)s', '.%(ext)s'),
+            'extractaudio': True,
+            'audioformat': 'mp3',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+                return filename
+            except Exception as e:
+                raise Exception(f"Failed to download media: {str(e)}")
+
+def transcribe_audio(file_path: str, model_size: str = "base") -> Dict[str, Any]:
+    try:
+        model = whisper.load_model(model_size)
+        result = model.transcribe(file_path)
+        return result
+    except Exception as e:
+        raise Exception(f"Transcription failed: {str(e)}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Transcribe audio/video from URLs using Whisper")
+    parser.add_argument("url", help="URL of the audio/video to transcribe")
+    parser.add_argument("-m", "--model", default="base", 
+                       choices=["tiny", "base", "small", "medium", "large"],
+                       help="Whisper model size (default: base)")
+    parser.add_argument("-o", "--output", help="Output file path (optional)")
+    parser.add_argument("--segments", action="store_true", 
+                       help="Include segment timestamps in output")
+    
+    args = parser.parse_args()
+    
+    if not validate_url(args.url):
+        print("Error: Invalid URL provided", file=sys.stderr)
+        sys.exit(1)
+    
+    print(f"Downloading media from: {args.url}")
+    
+    audio_file = None
+    try:
+        audio_file = download_media(args.url)
+        print(f"Downloaded to: {audio_file}")
+        
+        print(f"Transcribing using Whisper model: {args.model}")
+        result = transcribe_audio(audio_file, args.model)
+        
+        output_text = f"Language: {result['language']}\n\n"
+        output_text += f"Transcription:\n{result['text']}\n"
+        
+        if args.segments:
+            output_text += "\nSegments:\n"
+            for i, segment in enumerate(result['segments']):
+                start = segment['start']
+                end = segment['end']
+                text = segment['text'].strip()
+                output_text += f"[{start:.2f}s - {end:.2f}s]: {text}\n"
+        
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                f.write(output_text)
+            print(f"Transcription saved to: {args.output}")
+        else:
+            print(output_text)
+    
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    finally:
+        if audio_file and os.path.exists(audio_file):
+            os.unlink(audio_file)
+            print(f"Cleaned up temporary file: {audio_file}")
+
+if __name__ == "__main__":
+    main()
