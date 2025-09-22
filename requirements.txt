@@ -4,3 +4,4 @@ pydantic
 validators
 openai-whisper
 yt-dlp
+python-dotenv

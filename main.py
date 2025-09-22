@@ -6,6 +6,9 @@ import yt_dlp
 from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Media Transcriber",
               description="Transcribe audio/video from URLs using Whisper")
