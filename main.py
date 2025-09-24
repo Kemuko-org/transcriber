@@ -3,15 +3,49 @@ import tempfile
 import validators
 import whisper
 import yt_dlp
+import requests
+import logging
+import asyncio
 from typing import Dict, Any
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def ping_service():
+    url = os.getenv('DEPLOYED_URL')
+    if url:
+        try:
+            response = requests.get(url + '/health', timeout=30)
+            if response.status_code == 200:
+                logging.info(f"Successfully pinged {url} - Status: {response.status_code}")
+            else:
+                logging.warning(f"Ping returned status {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to ping {url}: {e}")
+
+
+async def keep_alive_task():
+    while True:
+        ping_service()
+        await asyncio.sleep(30)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(keep_alive_task())
+    yield
+    task.cancel()
+
+
 app = FastAPI(title="Media Transcriber",
-              description="Transcribe audio/video from URLs using Whisper")
+              description="Transcribe audio/video from URLs using Whisper",
+              lifespan=lifespan)
 
 
 class TranscriptionRequest(BaseModel):
@@ -40,7 +74,6 @@ def download_media(url: str) -> str:
             'no_warnings': True,
         }
 
-        # Check for cookie file or environment variable
         cookie_file_path = 'cookie.txt'
         youtube_cookies = os.environ.get('YOUTUBE_COOKIES')
         
