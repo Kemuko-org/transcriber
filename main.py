@@ -38,7 +38,6 @@ def download_media(url: str) -> str:
             'audioformat': 'mp3',
             'quiet': True,
             'no_warnings': True,
-            'cookiesfrombrowser': ('chrome',),
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
