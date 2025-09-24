@@ -40,14 +40,35 @@ def download_media(url: str) -> str:
             'no_warnings': True,
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
+        # Check for cookie file or environment variable
+        cookie_file_path = 'cookie.txt'
+        youtube_cookies = os.environ.get('YOUTUBE_COOKIES')
+        
+        if os.path.exists(cookie_file_path):
+            ydl_opts['cookiefile'] = cookie_file_path
+        elif youtube_cookies:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as cookie_file:
+                cookie_file.write("# Netscape HTTP Cookie File\n")
+                cookie_file.write(youtube_cookies)
+                cookie_file.flush()
+                ydl_opts['cookiefile'] = cookie_file.name
+
+        temp_cookie_file = None
+        if 'cookiefile' in ydl_opts and ydl_opts['cookiefile'] != 'cookie.txt':
+            temp_cookie_file = ydl_opts['cookiefile']
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info)
                 return filename
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Failed to download media: {str(e)}")
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Failed to download media: {str(e)}")
+        finally:
+            # Only delete temporary cookie files, not the local cookie.txt
+            if temp_cookie_file and os.path.exists(temp_cookie_file):
+                os.unlink(temp_cookie_file)
 
 
 def transcribe_audio(file_path: str, model_size: str = "base") -> Dict[str, Any]:
